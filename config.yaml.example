@@ -1,0 +1,163 @@
+# PET-CT Radiomics Pipeline Configuration
+# Copy this file to config.yaml and customize as needed
+
+# ==============================================================================
+# MODALITIES
+# ==============================================================================
+# Supported: CT, PET, MR, SPECT
+modalities:
+  - CT
+  - PET
+
+# ==============================================================================
+# TARGET ORGANS
+# ==============================================================================
+# The number of emitted labels depends on the installed TotalSegmentator
+# version and task (the validated v2.11.0 ``total`` task emitted 117 files).
+# Use 'all' to process all available organs
+# Or specify a custom list below
+
+# DEFAULT: Representative 8-organ set for PET analysis
+organs:
+  # Large organs (stable segmentation)
+  - liver
+  - spleen
+
+  # Medium-sized organs (physiological uptake)
+  - kidney_left
+  - kidney_right
+
+  # Small organs (susceptible to partial volume effects)
+  - adrenal_gland_left
+  - adrenal_gland_right
+
+  # Reference regions
+  - aorta          # Blood pool
+  - vertebrae_L1   # Bone marrow
+
+# ------------------------------------------------------------------------------
+# ALTERNATIVE: All available labels
+# ------------------------------------------------------------------------------
+# organs:
+#   - all
+
+# ------------------------------------------------------------------------------
+# ALTERNATIVE: Full lung lobes (bilateral)
+# ------------------------------------------------------------------------------
+# organs:
+#   - lung_upper_lobe_left
+#   - lung_lower_lobe_left
+#   - lung_upper_lobe_right
+#   - lung_middle_lobe_right
+#   - lung_lower_lobe_right
+#   - liver
+#   - spleen
+
+# ------------------------------------------------------------------------------
+# ALTERNATIVE: Extended organ set
+# ------------------------------------------------------------------------------
+# organs:
+#   - liver
+#   - spleen
+#   - kidney_left
+#   - kidney_right
+#   - adrenal_gland_left
+#   - adrenal_gland_right
+#   - aorta
+#   - vertebrae_L1
+#   - lung_upper_lobe_left
+#   - lung_lower_lobe_left
+#   - lung_upper_lobe_right
+#   - lung_middle_lobe_right
+#   - lung_lower_lobe_right
+
+# ==============================================================================
+# DICOM SERIES SELECTION
+# ==============================================================================
+# Auto-select appropriate CT and PET series from multi-series data
+dicom_selection:
+  # Enable automatic series selection
+  # Auto-selects main CT/PET from multi-series data
+  auto_select: true
+
+  # Minimum slice count for CT (excludes Dose Report, Localizer, etc.)
+  min_ct_slices: 100
+
+  # Minimum slice count for PET (excludes MIP, reports)
+  min_pet_slices: 50
+
+# ==============================================================================
+# SEGMENTATION SETTINGS
+# ==============================================================================
+segmentation:
+  # TotalSegmentator task per modality
+  tasks:
+    CT: total           # Standard CT segmentation
+    MR: total_mr        # MR-specific model
+    PET: use_ct_mask    # Use CT-derived masks for PET
+    SPECT: use_ct_mask  # Use CT-derived masks for SPECT
+
+  # Fast mode: Lower resolution and faster processing; benchmark on your data
+  # Recommended for routine use; disable for maximum accuracy
+  fast: true
+
+  # ROI subset: Limit TotalSegmentator output to specific organs
+  # null = retain all labels emitted by the selected task
+  # List specific organs to reduce disk usage
+  roi_subset: null
+
+# ==============================================================================
+# OUTPUT SETTINGS
+# ==============================================================================
+output:
+  # Output CSV filename
+  csv_file: radiomics_results.csv
+
+  # Include PyRadiomics diagnostic features (image hash, mask stats, etc.)
+  # Set to true for debugging; false for cleaner output
+  include_diagnostics: false
+
+# ==============================================================================
+# RADIOMICS SETTINGS
+# ==============================================================================
+radiomics:
+  # PET radiomics uses params.yaml for manuscript-aligned PyRadiomics settings
+  params_file: params.yaml
+
+  # Disabled by default because the manuscript workflow reports PET features
+  # plus shape descriptors from CT-derived masks, not a separate CT radiomics table
+  extract_ct: false
+
+# ==============================================================================
+# VISUALIZATION SETTINGS
+# ==============================================================================
+visualization:
+  # CT window settings for mediastinal window
+  ct_window:
+    level: 40    # Window level (HU)
+    width: 400   # Window width (HU)
+
+  # PET colormap
+  pet_colormap: hot
+
+  # PET SUV range for display
+  pet_suv_range:
+    min: 0
+    max: 10
+
+  # Mask overlay alpha
+  mask_alpha: 0.3
+
+# ==============================================================================
+# ADVANCED SETTINGS (Optional)
+# ==============================================================================
+# Uncomment and modify as needed
+
+# spatial_harmonization:
+#   # CT masks are transferred to native PET with nearest-neighbor interpolation.
+#   # A linearly resampled CT-grid PET copy is generated for fusion QC only.
+#   # This is not de novo registration; it uses integrated PET/CT world coordinates.
+
+# radiomics:
+#   params_file: params.yaml
+#   extract_ct: false

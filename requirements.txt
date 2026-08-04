@@ -1,0 +1,25 @@
+# PET-CT Radiomics Pipeline - Requirements
+# ==========================================
+# Version constraints are critical for compatibility
+
+# --- Core Libraries ---
+numpy>=1.26,<2.0          # NumPy 2.x incompatible with PyTorch/TotalSegmentator
+pandas>=2.0
+tqdm>=4.65
+pyyaml>=6.0
+scikit-learn>=1.3
+scipy>=1.10
+
+# --- Medical Imaging & DICOM ---
+SimpleITK>=2.3
+nibabel>=5.0
+pydicom>=2.4
+dicom2nifti>=2.4
+python-gdcm>=3.0
+
+# --- AI & Segmentation ---
+TotalSegmentator>=2.0,<3.0   # Version lock for API compatibility
+
+# --- Radiomics ---
+# Exact upstream revision used for the manuscript validation environment.
+pyradiomics @ git+https://github.com/AIM-Harvard/pyradiomics.git@8ed579383b44806651c463d5e691f3b2b57522ab

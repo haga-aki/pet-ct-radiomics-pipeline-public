@@ -1,0 +1,62 @@
+# PET-CT Radiomics Pipeline - Cross-platform Environment
+# Version compatibility issues resolved with explicit version pinning
+#
+# Usage:
+#   conda env create -f environment.yml
+#   conda activate med_ai
+#
+# Note: PyTorch 2.2+ and TotalSegmentator 2.x compatibility verified
+#       NumPy 2.x and PyRadiomics conflict resolved
+
+name: med_ai
+channels:
+  - conda-forge
+  - pytorch
+  - defaults
+
+dependencies:
+  # Python
+  - python=3.10
+
+  # --- Important: Version pinning ---
+  # NumPy: Use 1.x series (NumPy 2.x is incompatible with PyTorch/TotalSegmentator)
+  - numpy>=1.26,<2.0
+
+  # PyTorch: 2.2+ required for TotalSegmentator compatibility
+  - pytorch>=2.2
+  - torchvision
+
+  # Core libraries
+  - pandas>=2.0
+  - matplotlib>=3.7
+  - pyyaml>=6.0
+  - scipy>=1.10
+  - scikit-learn>=1.3
+  - scikit-image>=0.21
+  - pillow>=10.0
+  - tqdm
+
+  # Medical image processing (conda-forge)
+  - simpleitk>=2.3
+  - nibabel>=5.0
+
+  - pip
+  - pip:
+    # DICOM processing
+    - pydicom>=2.4
+    - dicom2nifti>=2.4
+    - python-gdcm>=3.0
+
+    # Segmentation
+    # TotalSegmentator 2.x series (depends on nnunetv2)
+    - TotalSegmentator>=2.0,<3.0
+
+    # Radiomics feature extraction
+    # Note: pyradiomics 3.1.1 is compatible with NumPy 1.x series
+    - pyradiomics>=3.0,<4.0
+
+    # Visualization
+    - seaborn>=0.12
+
+    # Other
+    - imageio>=2.30

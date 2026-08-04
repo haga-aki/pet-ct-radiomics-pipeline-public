@@ -1,0 +1,104 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+### Added
+- Added a lightweight GitHub Actions matrix for Python 3.10–3.12 that runs
+  synthetic-data unit tests and syntax checks without accessing study data.
+
+### Fixed
+- Prevented case-specific SUV inflation by avoiding a second application of
+  DICOM Rescale Slope and Intercept to PET NIfTI values already rescaled by
+  `dicom2nifti`.
+- Added regression tests covering raw DICOM pixels and modality-rescaled BQML
+  NIfTI values.
+- Removed the unsupported `enableCExtensions` key from `params.yaml`, which
+  prevented parameter validation with current PyRadiomics releases.
+- Existing PET SUV NIfTI outputs are now rebuilt on rerun so files created by
+  the previous conversion logic are not silently reused.
+- Added Apple MPS detection and routing for TotalSegmentator on supported Macs.
+- Fusion QC generation now uses the active `--output` directories instead of
+  falling back to paths beside the pipeline source code.
+- Representative-slice de-duplication now backfills all six QC panels, and QC
+  titles remain visible on the black figure background.
+
+## [2.0.1] - 2026-03-17
+
+### Changed
+- Aligned the public pipeline with the JJR manuscript workflow:
+  - PET is resampled to CT space before SUV conversion and PET radiomics extraction
+  - `params.yaml` is applied during PET radiomics extraction
+  - CT radiomics export is disabled by default
+- Updated README and supporting documentation to match the released workflow and
+  clarify that no additional PyRadiomics resampling is performed after PET-to-CT
+  resampling.
+
+### Fixed
+- Removed broken references to non-existent visualization scripts from the
+  public analysis entry points.
+- Removed tracked derived CSV examples that were not appropriate for public
+  distribution.
+- Updated release metadata to match the manuscript-aligned public version.
+
+## [2.0.0] - 2026-01-09
+
+### Added
+- **DICOM Series Auto-Selection**: Automatically detects and selects appropriate CT/PET series from multi-series DICOM data
+  - Filters out Dose Reports, Localizers, MIP images, and other non-volumetric series
+  - Configurable minimum slice counts (`min_ct_slices`, `min_pet_slices`)
+  - Series selection based on SeriesDescription, slice count, and image dimensions
+- **New visualization module** (`visualize_mask_verification.py`):
+  - Mediastinal window CT settings (WL=40, WW=400)
+  - PET-CT fusion with mask overlay
+  - Axial + Coronal dual-view display
+  - Automatic slice selection based on organ positions
+- **Version report command**: `python run_pipeline.py --version-report`
+- **Dry run mode**: `python run_pipeline.py --dry-run` for previewing without processing
+
+### Changed
+- **Updated default organ set**:
+  - Liver, bilateral kidneys, bilateral adrenal glands, L1 vertebra, aorta, left lung (upper/lower lobes)
+  - Optimized for clinical PET/CT analysis
+- **Dependency version locking**:
+  - PyTorch >= 2.4 (required for TotalSegmentator compatibility)
+  - NumPy >= 1.26, < 2.0 (NumPy 2.x incompatible)
+  - TotalSegmentator >= 2.0, < 3.0
+  - PyRadiomics >= 3.0, < 4.0
+- **Environment files updated** for all platforms (macOS, Linux, Windows)
+
+### Fixed
+- **PyTorch/TotalSegmentator compatibility**: Fixed `ImportError: cannot import name 'DiagnosticOptions' from 'torch.onnx._internal.exporter'`
+- **NumPy version conflict**: Fixed `A module that was compiled using NumPy 1.x cannot be run in NumPy 2.x`
+- **DICOM series structure recognition**: Fixed issue where multi-series folders were incorrectly processed as separate patients
+
+### Technical Details
+
+#### DICOM Auto-Selection Logic
+When processing a folder with multiple DICOM series:
+1. Scans all subfolders for DICOM files
+2. Reads metadata from first file in each series (Modality, SeriesDescription, Rows, Columns)
+3. Filters by minimum slice count (default: CT ≥ 100, PET ≥ 50)
+4. For CT: Prioritizes 512x512 standard resolution
+5. For PET: Prioritizes series with "Axial" or "Body" in description
+6. Falls back to series with maximum slice count
+
+#### Visualization Settings
+- CT Window: Mediastinal (WL=40 HU, WW=400 HU)
+- PET Color Map: Hot
+- PET SUV Range: 0-10
+- Mask Overlay Alpha: 0.3
+
+## [1.0.0] - 2026-01-01
+
+### Initial Release
+- DICOM to NIfTI conversion
+- TotalSegmentator-based segmentation
+- PyRadiomics feature extraction
+- Multi-vendor SUV conversion
+- GUI launcher
+- Docker support
