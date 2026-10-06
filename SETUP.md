@@ -4,9 +4,9 @@
 
 This pipeline automates the following processes:
 - DICOM to NIfTI conversion
-- PET-to-CT spatial alignment (nibabel affine resampling)
-- TotalSegmentator-based organ segmentation (104 structures)
-- Multi-vendor SUV conversion
+- Native-grid PET SUVbw conversion from standard DICOM activity concentration (BQML)
+- TotalSegmentator-based CT organ segmentation (`total` task; 117 mask files with v2.11.0)
+- Transfer of CT-derived masks to the native PET grid (nearest-neighbor)
 - PyRadiomics feature extraction
 - Result visualization
 
@@ -133,7 +133,7 @@ organs:
   - aorta              # Blood pool reference
   - vertebrae_L1       # Bone marrow representative
 
-# Or use all 104 organs:
+# Or use all labels of the configured TotalSegmentator task:
 # organs:
 #   - all
 
@@ -190,24 +190,22 @@ run_analysis.bat
 1. **Data Preparation**: Place DICOM folders in `raw_download/`
 2. **ID Anonymization**: Folder names are converted to anonymous IDs
 3. **DICOM to NIfTI**: Automatic conversion with modality detection
-4. **Segmentation**: TotalSegmentator processes CT images (104 structures)
-5. **Spatial Alignment**: PET resampled to CT space via nibabel affine (NOT de novo registration)
-6. **SUV Conversion**: Vendor-neutral SUV calculation
-7. **Feature Extraction**: 107 PyRadiomics features reported using IBSI terminology
-8. **Output**: Results saved to CSV
+4. **SUV Conversion**: Native PET converted to SUVbw from BQML data; ambiguous timing metadata is rejected
+5. **Segmentation**: TotalSegmentator processes CT images (`total` task)
+6. **Mask Transfer**: CT-derived masks transferred to the native PET grid in world coordinates (nearest-neighbor; NOT de novo registration)
+7. **Feature Extraction**: 93 first-order/texture features on native PET plus 14 shape features from the CT-grid mask (107 PyRadiomics features, IBSI terminology)
+8. **QC and Output**: A CT-grid PET copy is created for fusion images only; results and run-scoped QC reports are saved as CSV
 
 ---
 
-## Supported PET Vendors
+## SUV Conversion Support
 
-The pipeline automatically handles vendor-specific SUV conversion:
-
-| Vendor | Detection | Conversion Method |
-|--------|-----------|-------------------|
-| TOSHIBA/Canon | Tag (7065,102D) | Pixel / 100 |
-| Philips | Tag (7053,1000) | SUVScaleFactor |
-| Siemens | Bq/ml units | Decay correction |
-| GE | Bq/ml units | Decay correction |
+SUVbw is calculated from standard DICOM activity concentration
+(`Units = BQML`) with `DecayCorrection` START or ADMIN. Missing or ambiguous
+timing metadata is rejected rather than inferred. Pre-scaled or private-tag
+SUV encodings are not converted and require a validated vendor-specific
+adapter. This is an explicit support limit, not a claim of universal vendor
+support.
 
 ---
 
@@ -216,9 +214,10 @@ The pipeline automatically handles vendor-specific SUV conversion:
 | File | Description |
 |------|-------------|
 | `radiomics_results.csv` | Radiomics features (107 features × organs × modalities) |
-| `nifti_images/*.nii.gz` | Converted NIfTI images |
-| `segmentations/*/` | Organ segmentation masks |
-| `segmentations/*/combined_all_organs.nii.gz` | Combined mask for visualization |
+| `qc/<run_id>/nifti_images/*.nii.gz` | Converted NIfTI images for the run |
+| `qc/<run_id>/segmentations/*/` | Organ segmentation masks for the run |
+| `qc/<run_id>/case_qc.csv`, `organ_qc.csv`, `stage_qc.csv` | Run-scoped technical QC reports |
+| `qc/<run_id>/visualizations/` | Fusion images for visual review |
 
 ---
 

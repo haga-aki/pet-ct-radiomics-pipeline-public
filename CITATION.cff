@@ -16,10 +16,13 @@ keywords:
   - IBSI
   - PyRadiomics
 abstract: >-
-  Fully automated, reproducible whole-body PET radiomics extraction
-  using TotalSegmentator-derived CT segmentation masks. Supports
-  104 anatomical structures, vendor-neutral SUV conversion, and
-  107 radiomic features with IBSI-aligned definitions via PyRadiomics.
+  Standardized whole-body PET radiomics extraction using
+  TotalSegmentator-derived CT masks transferred to the native PET grid.
+  Uses the TotalSegmentator total task (117 mask files with v2.11.0),
+  SUVbw conversion from standard DICOM BQML data with fail-closed timing
+  checks, 107 PyRadiomics features (93 native-PET intensity and texture,
+  14 CT-grid shape) described with IBSI terminology, and run-scoped
+  technical QC reports.
 authors:
   - family-names: Haga
     given-names: Akira

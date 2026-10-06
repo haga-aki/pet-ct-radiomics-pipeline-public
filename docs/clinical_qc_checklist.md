@@ -13,16 +13,18 @@ This document provides guidance for validating pipeline outputs before using rad
 
 ### 2. SUV Conversion Verification
 
-| Check | Expected | Warning Signs |
-|-------|----------|---------------|
-| Liver SUVmean | 1.5-3.0 | < 0.5 or > 5.0 indicates conversion error |
-| Blood pool (aorta) | 1.5-2.5 | Unusually high/low values |
-| Background (muscle) | 0.5-1.5 | Negative values indicate error |
+The pipeline converts native PET to SUVbw only from standard DICOM activity
+concentration (`Units = BQML`) and rejects ambiguous timing metadata. Check:
 
-**Common SUV conversion issues:**
-- Pre-scaled values: Verify division factor applied correctly
-- Scale factor encoding: Confirm multiplication by stored factor
-- BQML data: Verify decay correction applied
+- [ ] `stage_qc.csv` reports `suv_conversion` as completed for every PET series
+- [ ] Body weight, injected dose, radionuclide half-life, and injection and
+      acquisition times are present and plausible in the source DICOM
+- [ ] No negative or non-finite SUV values in the converted image
+- [ ] Reference-region values (for example, central liver or blood pool) look
+      plausible on visual review for the tracer and protocol in use
+
+This document does not define numerical normal or reference ranges. Unusual
+values should prompt review of metadata and images, not automatic exclusion.
 
 ---
 
@@ -57,27 +59,31 @@ For each organ, verify in the QC visualization:
 
 ## Radiomics Feature Validation
 
-### Physiological Plausibility
+### Plausibility Review
 
-| Feature | Liver (PET) | Kidney (PET) | Aorta (PET) |
-|---------|-------------|--------------|-------------|
-| Mean SUV | 1.5-3.0 | 2.0-4.0 | 1.5-2.5 |
-| Max SUV | 3.0-8.0 | 4.0-10.0 | 2.5-5.0 |
-| Volume (ml) | 1000-2000 | 100-200 | 50-100 |
-| Entropy | 3.5-4.5 | 3.5-4.5 | 3.0-4.0 |
+No numerical normal ranges are provided. Feature values depend on tracer,
+scanner, reconstruction, uptake time, discretization, and the anatomical
+definition of each mask (for example, whole-kidney masks include
+collecting-system activity). Review instead:
+
+- [ ] Values are consistent with the visual fusion image for the same organ
+- [ ] Organs adjacent to the diaphragm, small organs, and organs with excreted
+      tracer are interpreted with their known limitations
+- [ ] Values that differ markedly from other cases in the same cohort are
+      checked against images and metadata before analysis
 
 ### Red Flags
 
 **Immediate investigation required:**
 - Negative SUV values
 - Volume = 0 or extremely small
-- NaN or Inf in any feature
+- NaN or Inf in any feature (reported as `nonfinite_features` in `organ_qc.csv`)
 - Entropy = 0 (uniform region)
+- `geometry_mismatch` or `source_geometry_mismatch` in `organ_qc.csv`
 
 **Review recommended:**
-- SUVmax > 20 (possible lesion or artifact)
-- Volume deviates >50% from expected
-- Shape features inconsistent with anatomy
+- High SUVmax that may reflect a lesion, excreted tracer, or artifact
+- Volume or shape inconsistent with the visible anatomy
 
 ---
 
@@ -153,7 +159,7 @@ For each processed case, record:
 |-------|--------------|----------|
 | No output CSV | Pipeline crash | Check error logs, verify input format |
 | Missing organs | Segmentation failure | Review CT quality, try non-fast mode |
-| Wrong SUV range | Conversion error | Verify vendor detection, check DICOM tags |
+| Implausible SUV values | Conversion or metadata error | Check DICOM Units (BQML), dose, weight, and timing tags |
 | Unrealistic features | Registration failure | Review CT-PET alignment |
 | Empty mask warning | Organ too small in PET space | Expected for small structures, exclude from analysis |
 
