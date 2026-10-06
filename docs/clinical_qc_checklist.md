@@ -161,8 +161,8 @@ For each processed case, record:
 | No output CSV | Pipeline crash | Check error logs, verify input format |
 | Missing or empty organ masks | Non-applicable label (sex-specific or pathology-dependent), structure outside the imaged range, or segmentation failure | Check `organ_qc.csv`, scan coverage, and CT images before classifying as failure |
 | Implausible SUV values | Conversion or metadata error | Check DICOM Units (BQML), dose, weight, and timing tags |
-| Unrealistic features | Registration failure | Review CT-PET alignment |
-| Empty after PET-grid transfer / small ROI | Structure small relative to PET voxels | Reported as `empty_after_transfer` or `small_roi`; exclude or interpret as exploratory |
+| Implausible feature values | Mask error, SUV conversion or metadata error, local PET/CT mismatch (e.g., respiratory motion), or feature configuration | Review masks on fusion images, SUV metadata, PET/CT correspondence, and radiomics parameters |
+| Empty after PET-grid transfer / small ROI | Structure small relative to PET voxels | `empty_after_transfer` and `small_roi` (below the voxel threshold) are not extracted; features from small structures that meet the threshold should be interpreted as exploratory |
 
 ---
 
