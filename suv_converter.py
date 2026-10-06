@@ -18,29 +18,38 @@ import pydicom
 import numpy as np
 from datetime import datetime
 from pathlib import Path
+from suv_timing import decay_seconds, positive
 
 
 class SUVConverter:
     """Vendor-specific SUV conversion class"""
 
-    def __init__(self, dicom_dir):
+    def __init__(self, dicom_dir, *, allow_same_day_injection=False):
         """
         Args:
             dicom_dir: Path to PET DICOM folder
         """
         self.dicom_dir = Path(dicom_dir)
+        if not isinstance(allow_same_day_injection, bool):
+            raise ValueError('allow_same_day_injection must be a boolean')
+        self.allow_same_day_injection = allow_same_day_injection
         self.ds = self._load_sample_dicom()
         self.manufacturer = self._detect_manufacturer()
         self.suv_info = self._analyze_suv_method()
 
     def _load_sample_dicom(self):
         """Load a sample DICOM file"""
+        datasets = []
         for f in sorted(self.dicom_dir.iterdir()):
             if f.is_file() and not f.name.startswith('.'):
                 try:
-                    return pydicom.dcmread(str(f), stop_before_pixels=True)
+                    ds = pydicom.dcmread(str(f), stop_before_pixels=True)
                 except:
                     continue
+                datasets.append(ds)
+        if datasets:
+            self.datasets = datasets
+            return datasets[0]
         raise ValueError(f"No valid DICOM files in {self.dicom_dir}")
 
     def _detect_manufacturer(self):
@@ -206,31 +215,28 @@ class SUVConverter:
         if self.suv_info['method'] == 'UNKNOWN':
             raise ValueError("Cannot calculate SUV: missing required DICOM tags")
 
-        weight = self.suv_info.get('patient_weight')  # kg
+        weight = positive(self.suv_info.get('patient_weight'), 'PatientWeight')
         rp_info = self.suv_info.get('radiopharmaceutical', {})
 
-        injected_dose = rp_info.get('total_dose')  # Bq
-        half_life = rp_info.get('half_life')  # seconds
-        start_time = rp_info.get('start_time')  # injection time
-
-        if acquisition_time is None:
-            acquisition_time = getattr(self.ds, 'AcquisitionTime',
-                                      getattr(self.ds, 'SeriesTime', None))
-
-        # Calculate time difference (seconds)
-        def parse_time(t):
-            t_str = str(t).split('.')[0]
-            if len(t_str) >= 6:
-                return int(t_str[0:2]) * 3600 + int(t_str[2:4]) * 60 + int(t_str[4:6])
-            return 0
-
-        time_diff = parse_time(acquisition_time) - parse_time(start_time)
-        if time_diff < 0:
-            time_diff += 24 * 3600  # Handle day crossing
+        injected_dose = positive(rp_info.get('total_dose'), 'RadionuclideTotalDose')
+        half_life = positive(rp_info.get('half_life'), 'RadionuclideHalfLife')
+        time_diff = decay_seconds(self.ds, acquisition_time, allow_same_day_injection=self.allow_same_day_injection)
+        # Do not apply one slice's scale to a heterogeneous/mixed series.
+        for ds in self.datasets:
+            rp = ds.RadiopharmaceuticalInformationSequence[0]
+            if (str(getattr(ds, 'SeriesInstanceUID', '')) != str(getattr(self.ds, 'SeriesInstanceUID', ''))
+                    or str(getattr(ds, 'Units', '')) != 'BQML'
+                    or str(getattr(ds, 'DecayCorrection', '')) != str(self.ds.DecayCorrection)
+                    or positive(ds.PatientWeight, 'PatientWeight') != weight
+                    or positive(rp.RadionuclideTotalDose, 'dose') != injected_dose
+                    or positive(rp.RadionuclideHalfLife, 'half_life') != half_life
+                    or decay_seconds(ds, acquisition_time, allow_same_day_injection=self.allow_same_day_injection) != time_diff):
+                raise ValueError('Inconsistent series SUV metadata; vendor-specific timing requires review')
 
         # Decay correction
         decay_factor = np.exp(-np.log(2) * time_diff / half_life)
         corrected_dose = injected_dose * decay_factor
+        positive(corrected_dose, 'decay-corrected dose')
 
         # SUVbw = Activity(Bq/ml) / (CorrectedDose(Bq) / Weight(g))
         # Convert weight to grams (kg * 1000)
@@ -256,6 +262,9 @@ class SUVConverter:
         scale = self.get_suv_scale_factor()
 
         if scale is not None:
+            if input_is_rescaled:
+                raise ValueError('Private-tag SUV scaling of converted NIfTI requires a validated vendor-specific adapter')
+            positive(scale, 'SUV scale')
             return pixel_data / scale
         else:
             # Calculation from Bq/ml required

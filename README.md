@@ -23,6 +23,9 @@ The public workflow is aligned with the manuscript pipeline:
 
 Important clarification:
 
+- In the manuscript, reproducibility refers to standardized computational
+  execution with fixed processing parameters, not to test-retest repeatability
+  of individual radiomic features.
 - This is not de novo PET/CT registration.
 - PET is assumed to come from an integrated PET/CT acquisition.
 - PET intensities are not upsampled to the CT grid for radiomics extraction.
@@ -58,9 +61,9 @@ python run_pipeline.py --input /path/to/PETCT_DICOM --output /path/to/output
 Main output:
 
 - `/path/to/output/radiomics_results.csv`
-- `/path/to/output/nifti_images/`
-- `/path/to/output/segmentations/`
-- `/path/to/output/visualizations/`
+- `/path/to/output/qc/<run_id>/nifti_images/`
+- `/path/to/output/qc/<run_id>/segmentations/`
+- `/path/to/output/qc/<run_id>/visualizations/`
 
 ## Representative Default Organs
 
@@ -159,6 +162,41 @@ Full configuration details are documented in
 - `python gui_launcher.py`
   Starts the GUI launcher.
 
+## Technical QC reports
+
+Each execution writes `qc/<run_id>/case_qc.csv`, `organ_qc.csv`, and
+`stage_qc.csv` below the output directory. These files are checkpointed as
+processing proceeds, including when no radiomics rows are extracted.
+
+- Organ records distinguish missing files, empty masks, masks empty after PET
+  transfer, small ROIs, geometry mismatches, transfer/extraction failures,
+  non-finite features, and extracted rows. With an explicit organ list,
+  upstream failures also produce `not_attempted` records.
+- Geometry checks compare size, spacing, origin, and direction for the source
+  CT mask and CT reference, then the transferred mask and native PET reference.
+  Numeric tolerance is 1e-5 (mm for spacing/origin; unitless for direction).
+  These checks do not establish anatomical alignment.
+- Stage records include series selection, conversion, segmentation, SUV
+  conversion, the CT-grid display copy, and fusion-image generation.
+- Case summaries use `checks_completed`, `attention_required`, or `incomplete`.
+  Visual review remains `pending` and anatomical acceptance `not_assessed`;
+  successful processing never automatically certifies segmentation accuracy.
+
+Empty labels require an applicability decision; no universal success percentage
+is computed. With `organs: [all]`, the inventory is the files actually emitted;
+the program cannot infer an absent expected label without an explicit list.
+Small-ROI screening is a computational threshold, not a texture-reliability test.
+Hepatic-dome profile analysis and automatic respiratory-mismatch or segmentation
+failure detection are not part of this standard QC implementation.
+
+`qc/<run_id>/radiomics_results.csv` contains only the current execution. When an
+aggregate already exists, it is backed up to `previous_radiomics_results.csv`
+in this run directory before replacement. Reprocessed cases replace their old
+aggregate rows, including organs now skipped or failed; unrelated cases remain.
+Fusion records refer only to images generated from this execution's SUV display
+copy. Historical image files may remain on disk; consult the current stage report.
+An interrupted run retains its latest QC checkpoint with incomplete case status.
+
 ## Output Table
 
 `radiomics_results.csv` contains one row per `(PatientID, Modality, Organ)`.
@@ -228,3 +266,41 @@ pet-ct-radiomics-pipeline/
 ## License
 
 MIT License.
+
+## Safety and intermediate outputs
+
+Each invocation writes fresh NIfTI images, masks and fusion PNGs under
+`qc/<run_id>/`. Historical intermediates are retained, not implicitly reused.
+This intentionally reruns segmentation and increases storage/runtime; directory
+existence is not evidence of a completed or input-matched computation. The
+aggregate CSV retains the existing backup-and-replace policy for current cases.
+New result rows include `RunID`, `PipelineSHA256`, `ConfigurationSHA256` and
+`ParametersSHA256`; runtime package versions are saved alongside each run.
+Legacy aggregate rows without provenance remain unidentified, not revalidated.
+The aggregate may mix executions: use `qc/<run_id>/radiomics_results.csv` from
+a single full-cohort execution for a study, not the convenience aggregate.
+
+With `organs: [all]`, expected mask names come from the installed
+TotalSegmentator task map, restricted by `roi_subset` when configured. Missing
+files are reported separately from present but empty masks. Empty structures
+require applicability review and are not automatically anatomical failures.
+Unreadable, non-binary or geometrically inconsistent masks fail the combined
+mask stage rather than being silently omitted.
+
+Standard BQML SUV conversion supports `DecayCorrection=START` (acquisition
+reference) and `ADMIN` (no dose decay). Missing/invalid timing, NONE/unknown decay
+modes and inconsistent series metadata stop SUV extraction. SeriesTime is not
+assumed to be AcquisitionTime. Complete injection/acquisition datetimes support
+dated midnight crossings. Injection time without a date is rejected by default.
+Only after independently confirming same-day administration for every input,
+set `suv: {allow_same_day_injection: true}` in the configuration (recorded by
+the configuration hash). Negative intervals still stop processing; StudyDate
+alone does not establish the injection date. Series with varying acquisition timing
+require a validated vendor-specific adapter; this conservative implementation
+does not infer a reference from a random slice. Private-tag scaling of already
+rescaled NIfTI is likewise rejected until a vendor adapter is validated.
+These are explicit support limits, not claims of universal PET vendor support.
+
+Timing definitions: [DICOM PS3.3 C.8.9](https://dicom.nema.org/medical/dicom/2024a/output/chtml/part03/sect_C.8.9.html).
+Technical QC and passing unit tests do not establish clinical accuracy or
+anatomical acceptance; visual review remains required.

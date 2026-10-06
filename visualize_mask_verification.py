@@ -78,7 +78,7 @@ def load_masks(seg_dir, organs):
     return masks
 
 
-def create_mask_verification(case_id, nifti_dir=None, seg_dir=None, output_dir=None):
+def create_mask_verification(case_id, nifti_dir=None, seg_dir=None, output_dir=None, pet_path=None):
     """
     Create mask verification image
 
@@ -110,7 +110,10 @@ def create_mask_verification(case_id, nifti_dir=None, seg_dir=None, output_dir=N
 
     # File paths
     ct_path = nifti_dir / f"{case_id}_CT.nii.gz"
-    pet_path = nifti_dir / f"{case_id}_PET_SUV_registered.nii.gz"
+    explicit_pet = pet_path is not None
+    if explicit_pet and not Path(pet_path).is_file():
+        raise FileNotFoundError("Requested current-run PET image is missing")
+    pet_path = Path(pet_path) if explicit_pet else nifti_dir / f"{case_id}_PET_SUV_registered.nii.gz"
     if not pet_path.exists():
         pet_path = nifti_dir / f"{case_id}_PET_registered.nii.gz"
     if not pet_path.exists():
@@ -148,6 +151,8 @@ def create_mask_verification(case_id, nifti_dir=None, seg_dir=None, output_dir=N
         'vertebrae_L1'
     ]
     masks = load_masks(seg_dir, organs)
+    if explicit_pet and not any(np.any(mask) for mask in masks.values()):
+        raise ValueError("No non-empty representative masks available for fusion QC")
     organ_colors = create_organ_colormap()
 
     print(f"Loaded masks: {list(masks.keys())}")

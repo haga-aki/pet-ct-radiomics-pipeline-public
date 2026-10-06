@@ -41,6 +41,7 @@ jobs:
             "nibabel>=5.0" \
             "matplotlib>=3.7" \
             "PyYAML>=6.0"
+          python -m pip install "SimpleITK>=2.3" "pandas>=2.0"
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
@@ -52,4 +53,7 @@ jobs:
             suv_converter.py \
             create_final_suv.py \
             radiomics_grid_policy.py \
+            qc_reporting.py \
+            suv_timing.py \
+            mask_inventory.py \
             visualize_mask_verification.py

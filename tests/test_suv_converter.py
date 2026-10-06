@@ -25,12 +25,14 @@ class SUVConverterRescaleTests(unittest.TestCase):
         ds.RescaleIntercept = "0"
         ds.PatientWeight = "70"
         ds.AcquisitionTime = "100000"
+        ds.AcquisitionDate = "20250101"
         ds.DecayCorrection = "START"
 
         radiopharmaceutical = Dataset()
         radiopharmaceutical.RadionuclideTotalDose = "200000000"
         radiopharmaceutical.RadionuclideHalfLife = "6586.2"
         radiopharmaceutical.RadiopharmaceuticalStartTime = "090000"
+        radiopharmaceutical.RadiopharmaceuticalStartDateTime = "20250101090000"
         ds.RadiopharmaceuticalInformationSequence = [radiopharmaceutical]
         ds.save_as(path, enforce_file_format=True)
 
@@ -68,6 +70,21 @@ class SUVConverterRescaleTests(unittest.TestCase):
         np.testing.assert_allclose(
             incorrectly_rescaled / corrected, np.array([2.5]), rtol=1e-12
         )
+
+    def test_independent_start_and_admin_expected_values(self):
+        # Independent analytic oracle, not the converter's own calculation.
+        expected = 100 * 70000 / (200000000 * np.exp(-np.log(2) * 3600 / 6586.2))
+        np.testing.assert_allclose(self.converter.convert_to_suv(np.array([100.]), input_is_rescaled=True), [expected])
+        self.converter.ds.DecayCorrection = 'ADMIN'
+        np.testing.assert_allclose(self.converter.convert_to_suv(np.array([100.]), input_is_rescaled=True), [0.035])
+
+    def test_heterogeneous_timing_rejected(self):
+        import copy
+        other = copy.deepcopy(self.converter.ds)
+        other.AcquisitionTime = '101000'
+        self.converter.datasets.append(other)
+        with self.assertRaises(ValueError):
+            self.converter.convert_to_suv(np.array([100.]), input_is_rescaled=True)
 
 
 if __name__ == "__main__":

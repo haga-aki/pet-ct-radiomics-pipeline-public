@@ -69,6 +69,8 @@ FROM dependencies AS final
 COPY run_pipeline.py .
 COPY run_full_analysis.py .
 COPY suv_converter.py .
+COPY radiomics_grid_policy.py .
+COPY qc_reporting.py .
 COPY create_final_suv.py .
 COPY gui_launcher.py .
 COPY visualize_mask_verification.py .

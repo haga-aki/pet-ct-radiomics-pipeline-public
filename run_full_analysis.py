@@ -189,6 +189,7 @@ def main():
                         help='Run pipeline even if no new source folders are detected')
     parser.add_argument('--visualize-only', action='store_true',
                         help='Generate visualization from existing outputs only')
+    parser.add_argument('--run-id', type=str, help='Explicit QC run ID for --visualize-only')
     args = parser.parse_args()
 
     output_root = get_output_root(args.output)
@@ -203,9 +204,14 @@ def main():
     print(f"Python: {PYTHON_PATH}")
 
     if args.visualize_only:
+        if not args.run_id or Path(args.run_id).name != args.run_id:
+            parser.error('--visualize-only requires a single --run-id directory name')
+        run_root = result_csv.parent / 'qc' / args.run_id
+        if not run_root.is_dir():
+            parser.error('Requested QC run does not exist')
         print_step(1, "QC visualization from existing outputs")
-        case_ids = sorted(get_processed_case_ids(output_root))
-        ok = run_visualization(output_root, case_ids)
+        case_ids = sorted(get_processed_case_ids(run_root))
+        ok = run_visualization(run_root, case_ids)
         if ok:
             print_header("Complete")
         else:
@@ -218,9 +224,7 @@ def main():
         status = "NEW" if folder in new_data else "processed"
         print(f"  - {folder} [{status}]")
 
-    if not new_data and not args.force:
-        print_warning("No new data detected. Use --force to rerun the pipeline.")
-        return
+    print_warning('Every invocation recomputes in a fresh QC run; old directories are not cache evidence.')
 
     print_step(1, "Run manuscript-aligned pipeline")
     if not run_pipeline(args):
@@ -228,19 +232,15 @@ def main():
         return
     print_success("Pipeline completed")
 
-    if not args.skip_visualization:
-        print_step(2, "Generate QC visualization")
-        case_ids = sorted(get_processed_case_ids(output_root))
-        run_visualization(output_root, case_ids)
+    # run_pipeline already generates current-run fusion images and records QC.
+    # Do not scan legacy output directories or select a "latest" concurrent run.
 
     elapsed = time.time() - start_time
     print_header("Analysis Complete")
     print(f"Processing time: {elapsed / 60:.1f} minutes")
     print("\nOutput files:")
     print(f"  - {result_csv}")
-    print(f"  - {output_root / 'nifti_images'}")
-    print(f"  - {output_root / 'segmentations'}")
-    print(f"  - {output_root / 'visualizations'}")
+    print(f"  - {result_csv.parent / 'qc'} / <run_id> (intermediates and QC)")
 
 
 if __name__ == "__main__":

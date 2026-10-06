@@ -25,6 +25,8 @@ import nibabel as nib
 import SimpleITK as sitk
 import yaml
 from suv_converter import SUVConverter
+from mask_inventory import expected_masks
+from qc_reporting import QCReport, geometry_metrics, nonfinite_features
 from radiomics_grid_policy import (
     PET_NONSHAPE_FEATURE_CLASSES,
     merge_pet_and_shape_results,
@@ -183,7 +185,7 @@ def convert_pet_to_suv(image_path, dicom_path, output_path):
     """Convert a PET NIfTI image to SUVbw using PET DICOM metadata."""
     try:
         log_progress("  Converting PET image to SUVbw...", "INFO")
-        converter = SUVConverter(dicom_path)
+        converter = SUVConverter(dicom_path, allow_same_day_injection=CONFIG.get('suv', {}).get('allow_same_day_injection', False))
         pet_img = nib.load(str(image_path))
         # dicom2nifti applies RescaleSlope/RescaleIntercept before writing the
         # NIfTI image. Tell the SUV converter not to apply those tags again.
@@ -591,8 +593,7 @@ def step1_convert_dicom(dicom_path, anon_id, modality):
     """DICOM to NIfTI conversion."""
     output_path = NIFTI_DIR / f"{anon_id}_{modality}.nii.gz"
     if output_path.exists():
-        log_progress(f"{modality} NIfTI exists. Skipping.", "INFO")
-        return output_path
+        raise FileExistsError('Conversion output already exists; use a fresh run directory')
     if not dicom_path.exists():
         log_progress(f"DICOM not found: {dicom_path}", "WARNING")
         return None
@@ -621,12 +622,8 @@ def step2_segmentation(nifti_path, anon_id, modality, ct_seg_dir=None, use_gpu=T
             return None
 
     output_folder = SEG_DIR / f"{anon_id}_{modality}"
-    output_folder.mkdir(parents=True, exist_ok=True)
+    output_folder.mkdir(parents=True, exist_ok=False)
     combined_path = output_folder / "combined_all_organs.nii.gz"
-
-    if combined_path.exists():
-        log_progress(f"{modality}: Segmentation already completed. Skipping.", "INFO")
-        return output_folder
 
     try:
         sample = output_folder / "liver.nii.gz"
@@ -659,17 +656,26 @@ def step2_segmentation(nifti_path, anon_id, modality, ct_seg_dir=None, use_gpu=T
         # Create combined mask
         all_files = sorted(list(output_folder.glob("*.nii.gz")))
         input_files = [p for p in all_files if "combined_" not in p.name]
+        missing = [name for name in expected_masks(CONFIG, modality)
+                   if not (output_folder / f'{name}.nii.gz').is_file()]
+        if missing:
+            log_progress(f'Missing expected masks: {missing}', 'WARNING')
         if not input_files:
-            return output_folder
+            raise ValueError('Segmentation produced no masks')
 
         base_img = nib.load(str(input_files[0]))
         combined_data = np.zeros(base_img.get_fdata().shape, dtype=np.uint16)
         for idx, part_path in enumerate(input_files, start=1):
             try:
                 part_data = nib.load(str(part_path)).get_fdata()
+                part_img = nib.load(str(part_path))
+                if part_data.shape != combined_data.shape or not np.allclose(part_img.affine, base_img.affine, rtol=0, atol=1e-6):
+                    raise ValueError('Mask geometry differs within segmentation output')
+                if not np.all(np.isfinite(part_data)) or not np.all((part_data == 0) | (part_data == 1)):
+                    raise ValueError('Expected a finite binary organ mask')
                 combined_data[part_data > 0] = idx
-            except:
-                pass
+            except Exception as exc:
+                raise ValueError(f'Cannot combine mask {part_path.name}') from exc
 
         new_img = nib.Nifti1Image(combined_data, base_img.affine, base_img.header)
         nib.save(new_img, combined_path)
@@ -728,15 +734,14 @@ def resample_pet_to_ct_space(pet_path, ct_path, output_path):
         return False
 
 
-def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=None):
+def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=None, qc=None):
     """Feature extraction using PyRadiomics."""
     organs = CONFIG['organs']
     include_diag = CONFIG['output'].get('include_diagnostics', False)
     min_roi_size = get_minimum_roi_size(CONFIG, modality)
 
     if 'all' in organs:
-        files = list(seg_folder.glob("*.nii.gz"))
-        organs = [p.stem.replace('.nii', '') for p in files if 'combined_' not in p.name]
+        organs = expected_masks(CONFIG, modality)
 
     log_progress(f"{modality}: Extracting radiomics features for {len(organs)} organs...", "INFO")
     pet_modality = modality in ['PET', 'PT', 'SPECT']
@@ -757,11 +762,29 @@ def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=
         ct_shape_image = None
     features_list = []
 
+    def record(organ, status, reason="", **metrics):
+        if qc is not None:
+            qc.organ(anon_id, modality, organ, status, reason, **metrics)
+
+    if not organs and qc is not None:
+        qc.stage(anon_id, "mask_inventory", "failed", "No mask files discovered", modality)
+
     for idx, organ in enumerate(organs, 1):
+        metrics = {}
         ct_mask_path = seg_folder / f"{organ}.nii.gz"
         if not ct_mask_path.exists():
+            log_progress(f"Missing mask: {organ}", "WARNING")
+            record(organ, "missing_mask", "Requested mask file does not exist")
             continue
         try:
+            if pet_modality:
+                source_mask = sitk.ReadImage(str(ct_mask_path), sitk.sitkUInt8)
+                source_geometry = geometry_metrics(ct_shape_image, source_mask)
+                metrics.update({"source_" + k: v for k, v in source_geometry.items()})
+                metrics["source_voxels"] = int(np.count_nonzero(sitk.GetArrayViewFromImage(source_mask)))
+                if source_geometry["geometry_status"] != "matched":
+                    record(organ, "source_geometry_mismatch", "CT mask geometry differs from CT reference", **metrics)
+                    continue
             analysis_mask_path = ct_mask_path
             if pet_modality:
                 analysis_mask_path = native_mask_dir / f"{organ}.nii.gz"
@@ -774,6 +797,7 @@ def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=
                         f"    [{idx}/{len(organs)}] Mask resampling failed: {organ}",
                         "ERROR",
                     )
+                    record(organ, "resampling_failed", "Mask transfer failed", **metrics)
                     continue
 
             if pet_modality:
@@ -784,11 +808,18 @@ def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=
                 voxel_count = int(
                     np.count_nonzero(sitk.GetArrayViewFromImage(analysis_mask_image))
                 )
+                metrics.update(geometry_metrics(analysis_image, analysis_mask_image))
+                if metrics["geometry_status"] != "matched":
+                    record(organ, "geometry_mismatch", "Transferred mask geometry differs from PET", **metrics)
+                    continue
             else:
                 analysis_mask_image = None
                 voxel_count = count_mask_voxels(analysis_mask_path)
+            metrics["analysis_voxels"] = voxel_count
             if voxel_count == 0:
                 log_progress(f"    [{idx}/{len(organs)}] Empty mask skipped: {organ}", "WARNING")
+                status = "empty_after_transfer" if metrics.get("source_voxels", 0) else "empty_mask"
+                record(organ, status, "Applicability requires review; not automatically classified as failure", **metrics)
                 continue
             if min_roi_size and voxel_count < min_roi_size:
                 log_progress(
@@ -796,6 +827,7 @@ def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=
                     f"({voxel_count} < {min_roi_size} voxels)",
                     "WARNING"
                 )
+                record(organ, "small_roi", f"ROI below {min_roi_size} voxel computational threshold", **metrics)
                 continue
 
             if pet_modality:
@@ -815,9 +847,18 @@ def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=
                     row[k] = v
                 elif include_diag and "diagnostics_" in k:
                     row[k] = v
+            feature_count = sum(k.startswith('original_') for k in result)
+            if not feature_count:
+                record(organ, "extraction_failed", "No radiomic features returned", **metrics)
+                continue
+            invalid = nonfinite_features(result)
             features_list.append(row)
+            record(organ, "nonfinite_features" if invalid else "extracted",
+                   ";".join(invalid), feature_count=feature_count,
+                   nonfinite_count=len(invalid), **metrics)
             log_progress(f"    [{idx}/{len(organs)}] Extracted: {organ}", "INFO")
         except Exception as e:
+            record(organ, "extraction_failed", type(e).__name__, **metrics)
             log_progress(f"    [{idx}/{len(organs)}] Error extracting {organ}: {e}", "ERROR")
 
     log_progress(f"{modality}: Radiomics extraction completed "
@@ -994,6 +1035,23 @@ Examples:
         use_gpu = False
 
     all_results = []
+    qc = QCReport(RESULT_CSV.parent)
+    provenance = qc.provenance(CONFIG, ROOT_DIR)
+    # No implicit cache reuse: preserve all historical intermediates and isolate
+    # this invocation, including failed/partial attempts, under its run ID.
+    NIFTI_DIR = qc.directory / 'nifti_images'
+    SEG_DIR = qc.directory / 'segmentations'
+    NIFTI_DIR.mkdir()
+    SEG_DIR.mkdir()
+    visualization_cases = set()
+
+    def extract_with_qc(*extract_args, **extract_kwargs):
+        try:
+            return step3_radiomics(*extract_args, **extract_kwargs, qc=qc)
+        except Exception as exc:
+            qc.stage(extract_args[2], "radiomics_setup", "failed", type(exc).__name__, extract_args[3])
+            log_progress(f"Radiomics setup failed: {exc}", "ERROR")
+            return []
     if not DICOM_DIR.exists():
         log_progress(f"Error: {DICOM_DIR} does not exist.", "ERROR")
         sys.exit(1)
@@ -1004,11 +1062,17 @@ Examples:
 
     for patient_idx, folder_name in enumerate(target_folders, 1):
         anon_id = get_or_create_anon_id(folder_name)
+        qc.start_case(anon_id)
         log_progress(f"\n[Patient {patient_idx}/{len(target_folders)}] "
                     f"Processing: {folder_name} (ID: {anon_id})", "INFO")
 
         patient_path = DICOM_DIR / folder_name
         modality_paths = detect_folder_structure(patient_path, CONFIG)
+        for required in CONFIG['modalities']:
+            if required not in modality_paths:
+                qc.stage(anon_id, "series_selection", "failed", "Configured modality not found", required)
+            else:
+                qc.stage(anon_id, "series_selection", "completed", modality=required)
         log_progress(f"  Found modalities: {list(modality_paths.keys())}", "INFO")
 
         ct_seg_dir = None
@@ -1017,10 +1081,12 @@ Examples:
         # CT processing
         if 'CT' in modality_paths:
             ct_nifti = step1_convert_dicom(modality_paths['CT'], anon_id, 'CT')
+            qc.stage(anon_id, "conversion", "completed" if ct_nifti else "failed", modality="CT")
             if ct_nifti:
                 ct_seg_dir = step2_segmentation(ct_nifti, anon_id, 'CT', use_gpu=use_gpu)
+                qc.stage(anon_id, "segmentation", "completed" if ct_seg_dir else "failed", modality="CT")
                 if ct_seg_dir and should_extract_ct_radiomics(CONFIG):
-                    feats = step3_radiomics(ct_nifti, ct_seg_dir, anon_id, 'CT')
+                    feats = extract_with_qc(ct_nifti, ct_seg_dir, anon_id, 'CT')
                     all_results.extend(feats)
 
         # PET/other modality processing
@@ -1030,6 +1096,7 @@ Examples:
 
             log_progress(f"  Processing {modality}...", "INFO")
             nifti = step1_convert_dicom(dicom_path, anon_id, modality)
+            qc.stage(anon_id, "conversion", "completed" if nifti else "failed", modality=modality)
             if not nifti:
                 continue
 
@@ -1042,7 +1109,9 @@ Examples:
                     )
                 if convert_pet_to_suv(nifti, dicom_path, suv_path):
                     nifti = suv_path
+                    qc.stage(anon_id, "suv_conversion", "completed", modality=modality)
                 else:
+                    qc.stage(anon_id, "suv_conversion", "failed", "SUV conversion failed", modality)
                     log_progress(f"  Warning: Could not convert {modality} to SUVbw", "WARNING")
                     continue
 
@@ -1057,15 +1126,23 @@ Examples:
                         ct_nifti,
                         registered_suv_path,
                     ):
+                        qc.stage(anon_id, "visualization_copy", "failed", "Resampling failed", modality)
                         log_progress(
                             f"  Warning: Could not create CT-grid {modality} SUV for QC",
                             "WARNING",
                         )
+                    else:
+                        display_geometry = geometry_metrics(sitk.ReadImage(str(ct_nifti)), sitk.ReadImage(str(registered_suv_path)))
+                        qc.stage(anon_id, "visualization_copy", "completed" if display_geometry['geometry_status'] == 'matched' else "failed",
+                                 str(display_geometry), modality)
+                        if modality in ('PET', 'PT') and display_geometry['geometry_status'] == 'matched':
+                            visualization_cases.add((anon_id, str(registered_suv_path)))
 
             seg_dir = step2_segmentation(nifti, anon_id, modality, ct_seg_dir, use_gpu=use_gpu)
             if not seg_dir:
+                qc.stage(anon_id, "mask_availability", "failed", "No segmentation available", modality)
                 continue
-            feats = step3_radiomics(
+            feats = extract_with_qc(
                 nifti,
                 seg_dir,
                 anon_id,
@@ -1075,9 +1152,20 @@ Examples:
             all_results.extend(feats)
 
     # Save results
+    for row in all_results:
+        row.update(provenance)
+    # Preserve the old aggregate, and keep an unambiguous current-run table.
+    if RESULT_CSV.exists():
+        import shutil
+        shutil.copy2(RESULT_CSV, qc.directory / "previous_radiomics_results.csv")
+    pd.DataFrame(all_results if all_results else [],
+                 columns=None if all_results else ['PatientID', 'Modality', 'Organ']).to_csv(
+                     qc.directory / "radiomics_results.csv", index=False)
     if all_results:
         if os.path.exists(RESULT_CSV):
             df_exist = pd.read_csv(RESULT_CSV)
+            # Current cases must not retain stale rows for organs now skipped/failed.
+            df_exist = df_exist[~df_exist['PatientID'].isin(qc.cases)]
             df_new = pd.DataFrame(all_results)
             df_final = pd.concat([df_exist, df_new], ignore_index=True)
         else:
@@ -1089,31 +1177,60 @@ Examples:
         # Visualization
         log_progress("\n=== Step 4: Generating PET-CT Fusion Visualizations ===", "INFO")
         try:
-            pet_cases = df_final[df_final['Modality'] == 'PET']['PatientID'].unique()
+            pet_cases = sorted(visualization_cases)
             if len(pet_cases) > 0:
                 log_progress(f"Found {len(pet_cases)} cases with PET data for visualization", "INFO")
                 try:
                     from visualize_mask_verification import create_mask_verification
 
-                    for case_id in pet_cases:
+                    for case_id, current_pet_path in pet_cases:
                         log_progress(f"  Visualizing: {case_id}", "INFO")
                         try:
-                            create_mask_verification(
+                            artifact = create_mask_verification(
                                 case_id,
                                 nifti_dir=NIFTI_DIR,
                                 seg_dir=SEG_DIR / f"{case_id}_CT",
-                                output_dir=RESULT_CSV.parent / "visualizations" / case_id,
+                                output_dir=qc.directory / "visualizations" / case_id,
+                                pet_path=Path(current_pet_path),
                             )
+                            if not artifact or not Path(artifact).is_file():
+                                raise RuntimeError("Visualization did not produce an image")
+                            qc.stage(case_id, "visualization", "completed", artifact=artifact)
                             log_progress(f"  {case_id} visualization complete", "INFO")
                         except Exception as e:
+                            qc.stage(case_id, "visualization", "failed", type(e).__name__)
                             log_progress(f"  Error visualizing {case_id}: {e}", "ERROR")
 
                     log_progress(f"=== Visualization Completed ===", "INFO")
                 except ImportError as e:
+                    for case_id, _ in pet_cases:
+                        qc.stage(case_id, "visualization", "failed", "Visualization module unavailable")
                     log_progress(f"Warning: Could not import visualization module: {e}", "WARNING")
             else:
                 log_progress("No PET data found, skipping visualization", "INFO")
         except Exception as e:
+            for case_id in qc.cases:
+                qc.stage(case_id, "visualization", "failed", type(e).__name__)
             log_progress(f"Warning: Visualization step failed: {e}", "WARNING")
     else:
+        if RESULT_CSV.exists():
+            previous = pd.read_csv(RESULT_CSV)
+            previous[~previous['PatientID'].isin(qc.cases)].to_csv(RESULT_CSV, index=False)
         log_progress("\n=== Pipeline Completed === No results to save.", "WARNING")
+
+    for case_id in qc.cases:
+        for modality in CONFIG['modalities']:
+                if modality == 'CT' and not should_extract_ct_radiomics(CONFIG):
+                    continue
+                try:
+                    requested = expected_masks(CONFIG, modality) if 'all' in CONFIG['organs'] else CONFIG['organs']
+                except Exception as exc:
+                    qc.stage(case_id, 'mask_inventory', 'failed', type(exc).__name__, modality)
+                    continue
+                for organ in requested:
+                    if not any(r['case_id'] == case_id and r['modality'] == modality and r['organ'] == organ for r in qc.organs):
+                        qc.organ(case_id, modality, organ, "not_attempted", "Upstream processing did not reach this organ; see stage_qc.csv")
+        if not any(r['case_id'] == case_id and r['stage'] == 'visualization' for r in qc.stages):
+            qc.stage(case_id, "visualization", "failed", "No current-run fusion image generated")
+        qc.stage(case_id, "case", "finished")
+    log_progress(f"Technical QC reports: {qc.directory}; visual review remains pending", "INFO")
