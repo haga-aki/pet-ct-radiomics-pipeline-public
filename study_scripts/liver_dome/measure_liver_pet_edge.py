@@ -284,7 +284,7 @@ def plot_summary(metrics: list[dict[str, object]], profiles: list[dict[str, obje
     fig.text(
         0.5,
         -0.015,
-        "Profile-derived estimates from native 3-mm superior–inferior sampling; subvoxel values reflect interpolation, not independent spatial resolution.",
+        "Profiles use linearly resampled CT-grid PET at 3-mm superior–inferior spacing; subvoxel estimates do not imply independent spatial resolution.",
         ha="center",
         va="top",
         fontsize=8,
@@ -400,7 +400,7 @@ def plot_surface_distribution(
     fig.text(
         0.5,
         -0.015,
-        "Lines/bands in A: median and IQR across eligible surface columns. Points in B–C: valid 10 × 10-mm projected patches (≥20 columns); boxes: IQR, whiskers: 10th–90th percentiles, diamonds: medians. Native superior–inferior sampling: 3 mm.",
+        "Lines/bands: median and IQR across columns. Points: valid 10 × 10-mm projected patches (≥20 columns); boxes: IQR, whiskers: 10th–90th percentiles, diamonds: medians. Linearly resampled CT-grid PET; superior–inferior spacing: 3 mm.",
         ha="center",
         va="top",
         fontsize=8,

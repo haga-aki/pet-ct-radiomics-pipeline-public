@@ -59,13 +59,16 @@ boundary is placed half a voxel above it (`k + 0.5`).
   one nearest the CT-derived boundary is used. Displacement = PET 50% crossing
   minus CT boundary (positive = cranial PET edge); width = 20% minus 80% crossing.
 - Patches: 10 x 10 mm by projected in-plane position; patches with fewer than
-  20 columns or without finite, ordered 80/50/20% crossings are excluded.
+  20 columns, without finite, ordered 80/50/20% crossings, or without a
+  positive 20-80% and a finite, positive 10-90% transition width are excluded.
 
 ## Verification
 
 Compared with the copies used for the manuscript, these versions differ only in
 command-line input/output paths (and the fusion manifest lists PNG file names
-instead of paths relative to a project folder). On the manuscript inputs
+instead of paths relative to a project folder), and the explanatory notes
+printed under Figs. 5 and 6 were updated to state that profiles use the
+CT-grid PET copy. On the manuscript inputs
 (Python 3.10.12, numpy 2.2.6, scipy 1.15.3, matplotlib 3.10.9, nibabel 5.4.2):
 
 - the four CSV outputs were byte-identical to those of the original script on
