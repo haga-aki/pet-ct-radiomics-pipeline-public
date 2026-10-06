@@ -73,9 +73,11 @@ pet_qc = resample_from_to(native_pet_suv, ct_img, order=1)
 **Input:** Modality-rescaled PET NIfTI values + PET DICOM metadata
 **Output:** SUVbw values
 
-SUVbw is calculated only from standard DICOM activity concentration
-(`Units = BQML`). Pre-scaled or private-tag SUV encodings are rejected until a
-validated vendor-specific adapter is available.
+On the pipeline path, SUVbw is calculated only from standard DICOM activity
+concentration (`Units = BQML`); pre-scaled or private-tag SUV encodings are
+rejected until a validated vendor-specific adapter is available. A legacy
+raw-DICOM API in `suv_converter.py` can still apply private scale factors; it
+is not used by the pipeline and was not evaluated.
 
 #### Activity concentration (BQML)
 
@@ -213,7 +215,7 @@ the repository does not claim fixed per-step timings.
 |-------|-------|----------|
 | "Cannot find DICOM files" | Wrong path or format | Verify directory structure |
 | "CUDA out of memory" | GPU memory exceeded | Use `--fast` or CPU mode |
-| "Empty mask" | Small organ in PET space | Skip organ or use larger ROI |
+| "Empty mask" | Label not applicable (e.g., sex-specific or pathology-dependent), structure outside the imaged range, segmentation miss, or loss after PET-grid transfer | Check `organ_qc.csv` status and the images before classifying as failure |
 | "SUV values negative" | Conversion or metadata error | Check DICOM Units (BQML) and timing tags |
 | "Alignment mismatch" | Non-integrated scanner or patient motion | May require additional registration |
 

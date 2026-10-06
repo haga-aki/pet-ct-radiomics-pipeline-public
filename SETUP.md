@@ -202,10 +202,12 @@ run_analysis.bat
 
 SUVbw is calculated from standard DICOM activity concentration
 (`Units = BQML`) with `DecayCorrection` START or ADMIN. Missing or ambiguous
-timing metadata is rejected rather than inferred. Pre-scaled or private-tag
-SUV encodings are not converted and require a validated vendor-specific
-adapter. This is an explicit support limit, not a claim of universal vendor
-support.
+timing metadata is rejected rather than inferred. On the pipeline path
+(NIfTI values already rescaled by `dicom2nifti`), pre-scaled or private-tag
+SUV encodings are rejected and require a validated vendor-specific adapter.
+`suv_converter.py` retains a legacy raw-DICOM API that can apply such private
+scale factors; it is not used by the pipeline and was not evaluated. This is
+an explicit support limit, not a claim of universal vendor support.
 
 ---
 

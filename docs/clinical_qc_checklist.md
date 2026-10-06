@@ -99,8 +99,9 @@ For each feature across patients:
 ### Consistency Checks
 
 - [ ] Same number of features for all patients
-- [ ] Same organs extracted for all patients
-- [ ] No missing values (unless organ not present)
+- [ ] Differences in extracted organs between patients are explained
+      (non-applicable label, outside imaged range, small ROI, or failure)
+- [ ] Missing values are explained by `organ_qc.csv` status
 - [ ] Feature distributions match expected patterns
 
 ---
@@ -158,10 +159,10 @@ For each processed case, record:
 | Issue | Likely Cause | Solution |
 |-------|--------------|----------|
 | No output CSV | Pipeline crash | Check error logs, verify input format |
-| Missing organs | Segmentation failure | Review CT quality, try non-fast mode |
+| Missing or empty organ masks | Non-applicable label (sex-specific or pathology-dependent), structure outside the imaged range, or segmentation failure | Check `organ_qc.csv`, scan coverage, and CT images before classifying as failure |
 | Implausible SUV values | Conversion or metadata error | Check DICOM Units (BQML), dose, weight, and timing tags |
 | Unrealistic features | Registration failure | Review CT-PET alignment |
-| Empty mask warning | Organ too small in PET space | Expected for small structures, exclude from analysis |
+| Empty after PET-grid transfer / small ROI | Structure small relative to PET voxels | Reported as `empty_after_transfer` or `small_roi`; exclude or interpret as exploratory |
 
 ---
 

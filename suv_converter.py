@@ -2,16 +2,25 @@
 """
 PET SUV Conversion Module
 =========================
-Automatic vendor-specific SUV calculation
+SUVbw conversion from PET DICOM metadata.
 
-Supported vendors:
-- TOSHIBA/Canon: Private tag (7065,102D) for SUVbw(X100) verification
-- Siemens: Calculate from Bq/ml
-- GE: Calculate from Bq/ml
-- Philips: Private tag (7053,1000) SUVScaleFactor
-- Generic: Calculate from standard DICOM tags
+Pipeline path (used by run_pipeline.py and create_final_suv.py; evaluated in
+the accompanying study):
+- Input values come from a NIfTI image already modality-rescaled by
+  dicom2nifti: ``convert_to_suv(..., input_is_rescaled=True)``.
+- DICOM ``Units`` must be ``BQML``; SUVbw is calculated with decay correction
+  and fail-closed timing checks (see suv_timing.py).
+- Private-tag SUV encodings are rejected on this path until a validated
+  vendor-specific adapter is available.
 
-SUVbw = Activity(Bq/ml) * Weight(kg) / InjectedDose(Bq) * DecayCorrection
+Legacy raw-DICOM path (not used by the pipeline; not evaluated):
+- ``convert_to_suv(..., input_is_rescaled=False)`` on stored DICOM pixel values
+  still applies private-tag scale factors when present (Canon/Toshiba
+  (7065,102D) SUVbw, Philips (7053,1000) SUV scale factor); otherwise it
+  applies Rescale Slope/Intercept and calculates SUVbw from Bq/ml.
+
+SUVbw = Activity(Bq/ml) / (DecayCorrectedDose(Bq) / (Weight(kg) * 1000))
+DecayCorrectedDose = InjectedDose * exp(-ln(2) * t / T1/2)
 """
 
 import pydicom
@@ -22,7 +31,7 @@ from suv_timing import decay_seconds, positive
 
 
 class SUVConverter:
-    """Vendor-specific SUV conversion class"""
+    """SUVbw conversion from PET DICOM metadata (see module docstring for supported paths)."""
 
     def __init__(self, dicom_dir, *, allow_same_day_injection=False):
         """
