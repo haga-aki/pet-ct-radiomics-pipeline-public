@@ -25,7 +25,7 @@ The base workflow performs the following steps:
    retaining original outputs and reporting paired native-PET features.
 
 The evaluated source is preserved at tag `anm-evaluated-2026-10-14`.
-Release `anm-release-2026-10-14` updates distribution documentation and test
+Release `anm-release-2026-10-14.1` updates distribution documentation and test
 configuration without changing the evaluated processing code.
 The adaptation comparison uses seven target labels (liver, spleen and five lung lobes),
 independently of the base workflow's eight-organ default.

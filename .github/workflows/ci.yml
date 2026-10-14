@@ -43,6 +43,8 @@ jobs:
             "matplotlib>=3.7" \
             "PyYAML>=6.0"
           python -m pip install "SimpleITK>=2.3" "pandas>=2.0"
+          # Inventory tests import label definitions only; no model inference.
+          python -m pip install --no-deps "TotalSegmentator==2.11.0"
 
       - name: Run unit tests
         run: python -m unittest discover -s tests -v

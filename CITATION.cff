@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "PET-CT Radiomics Pipeline"
-version: "anm-release-2026-10-14"
+version: "anm-release-2026-10-14.1"
 date-released: 2026-10-14
 url: "https://github.com/haga-aki/pet-ct-radiomics-pipeline-public"
 repository-code: "https://github.com/haga-aki/pet-ct-radiomics-pipeline-public"
