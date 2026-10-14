@@ -2,10 +2,10 @@ cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
 title: "PET-CT Radiomics Pipeline"
-version: 2.0.1
-date-released: 2026-03-17
-url: "https://github.com/haga-aki/pet-ct-radiomics-pipeline"
-repository-code: "https://github.com/haga-aki/pet-ct-radiomics-pipeline"
+version: "anm-release-2026-10-14"
+date-released: 2026-10-14
+url: "https://github.com/haga-aki/pet-ct-radiomics-pipeline-public"
+repository-code: "https://github.com/haga-aki/pet-ct-radiomics-pipeline-public"
 license: MIT
 keywords:
   - PET-CT
@@ -36,7 +36,7 @@ preferred-citation:
       given-names: Akira
     # Additional contributors may be added upon publication
   year: 2026
-  url: "https://github.com/haga-aki/pet-ct-radiomics-pipeline"
+  url: "https://github.com/haga-aki/pet-ct-radiomics-pipeline-public"
 references:
   - type: software
     title: "TotalSegmentator"

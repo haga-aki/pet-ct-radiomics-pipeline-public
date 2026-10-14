@@ -6,7 +6,7 @@ Thank you for your interest in contributing to this project!
 
 ### Reporting Issues
 
-1. Check if the issue already exists in [GitHub Issues](https://github.com/haga-aki/pet-ct-radiomics-pipeline/issues)
+1. Check if the issue already exists in [GitHub Issues](https://github.com/haga-aki/pet-ct-radiomics-pipeline-public/issues)
 2. If not, create a new issue with:
    - Clear description of the problem
    - Steps to reproduce

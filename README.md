@@ -24,8 +24,9 @@ The base workflow performs the following steps:
    diaphragmatic end of lung and adjacent liver/spleen masks in the SI direction,
    retaining original outputs and reporting paired native-PET features.
 
-This source bundle includes an unreleased local adaptation extension; the inherited
-base-pipeline citation metadata does not identify this extension as a published release.
+The evaluated source is preserved at tag `anm-evaluated-2026-10-14`.
+Release `anm-release-2026-10-14` updates distribution documentation and test
+configuration without changing the evaluated processing code.
 The adaptation comparison uses seven target labels (liver, spleen and five lung lobes),
 independently of the base workflow's eight-organ default.
 
@@ -62,8 +63,8 @@ CT-based segmentation mask geometry.
 ## Quick Start
 
 ```bash
-git clone https://github.com/haga-aki/pet-ct-radiomics-pipeline.git
-cd pet-ct-radiomics-pipeline
+git clone https://github.com/haga-aki/pet-ct-radiomics-pipeline-public.git
+cd pet-ct-radiomics-pipeline-public
 conda env create -f environment.yml
 conda activate pet_radiomics
 cp config.yaml.example config.yaml
