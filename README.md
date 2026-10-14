@@ -9,7 +9,7 @@ TotalSegmentator-derived CT masks.
 
 ## What This Repository Implements
 
-The public workflow is aligned with the manuscript pipeline:
+The base workflow performs the following steps:
 
 1. Select volumetric CT and PET DICOM series automatically.
 2. Convert DICOM to NIfTI with `dicom2nifti`.
@@ -19,7 +19,19 @@ The public workflow is aligned with the manuscript pipeline:
    interpolation.
 6. Extract PET first-order and texture features on the native PET grid, while
    retaining shape features from the original CT-grid masks.
-7. Create a separate CT-grid PET SUV image for fusion QC only.
+7. Create a separate CT-grid PET SUV image for fusion QC.
+8. Optionally use `--adapt-diaphragm` to locally extend or retract the
+   diaphragmatic end of lung and adjacent liver/spleen masks in the SI direction,
+   retaining original outputs and reporting paired native-PET features.
+
+This source bundle includes an unreleased local adaptation extension; the inherited
+base-pipeline citation metadata does not identify this extension as a published release.
+The adaptation comparison uses seven target labels (liver, spleen and five lung lobes),
+independently of the base workflow's eight-organ default.
+
+The adaptation stage is experimental and disabled by default. It does not move
+PET intensities, perform a whole-organ translation, or establish anatomical
+accuracy. See [adaptation inputs, outputs and safeguards](docs/pet_diaphragm_adaptation.md).
 
 Important clarification:
 
@@ -78,7 +90,7 @@ The default configuration targets the following organs:
 - aorta
 - vertebrae_L1
 
-This subset matches the manuscript demonstration workflow. To process all
+This is the base workflow's default subset. To process all
 available structures, set:
 
 ```yaml

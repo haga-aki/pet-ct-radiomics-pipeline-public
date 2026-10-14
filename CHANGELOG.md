@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Added generic guarded smooth SI adaptation with discrete fitting-patch scale
+  acceptance and exact saved-mask prediction checks; no study paths or runtime
+  monkeypatching are required.
+- Added mandatory complete 117-label inventory and original/saved overlap gates
+  to cached-input and DICOM opt-in adaptation routes. Failed candidates are not
+  moved to accepted output paths. Original input hashes must remain unchanged.
 - Added a lightweight GitHub Actions matrix for Python 3.10–3.12 that runs
   synthetic-data unit tests and syntax checks without accessing study data.
 

@@ -60,7 +60,8 @@ class QCReport:
         source = Path(__file__).resolve().parent
         digest = hashlib.sha256()
         for name in ('run_pipeline.py', 'qc_reporting.py', 'mask_inventory.py',
-                     'suv_converter.py', 'suv_timing.py', 'radiomics_grid_policy.py'):
+                     'suv_converter.py', 'suv_timing.py', 'radiomics_grid_policy.py',
+                     'pet_diaphragm_adaptation.py', 'run_adaptation_pipeline.py'):
             digest.update(name.encode())
             digest.update((source / name).read_bytes())
         params = Path(config.get('radiomics', {}).get('params_file', 'params.yaml'))

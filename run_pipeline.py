@@ -734,9 +734,10 @@ def resample_pet_to_ct_space(pet_path, ct_path, output_path):
         return False
 
 
-def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=None, qc=None):
+def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=None, qc=None,
+                    organs_override=None, native_mask_directory=None):
     """Feature extraction using PyRadiomics."""
-    organs = CONFIG['organs']
+    organs = list(organs_override) if organs_override is not None else CONFIG['organs']
     include_diag = CONFIG['output'].get('include_diagnostics', False)
     min_roi_size = get_minimum_roi_size(CONFIG, modality)
 
@@ -751,7 +752,8 @@ def step3_radiomics(nifti_path, seg_folder, anon_id, modality, shape_image_path=
             raise FileNotFoundError(
                 f"CT reference image is required for PET shape extraction: {shape_image_path}"
             )
-        native_mask_dir = SEG_DIR / f"{anon_id}_{modality}_native_grid"
+        native_mask_dir = (Path(native_mask_directory) if native_mask_directory is not None
+                           else SEG_DIR / f"{anon_id}_{modality}_native_grid")
         native_mask_dir.mkdir(parents=True, exist_ok=True)
         analysis_image = sitk.ReadImage(str(nifti_path), sitk.sitkFloat32)
         ct_shape_image = sitk.ReadImage(str(shape_image_path), sitk.sitkFloat32)
@@ -991,6 +993,8 @@ Examples:
                         help="Configuration file path")
     parser.add_argument("--no-auto-select", action="store_true",
                         help="Disable DICOM series auto-selection")
+    parser.add_argument("--adapt-diaphragm", action="store_true",
+                        help="Guarded smooth SI adaptation; complete 117-mask overlap gate and separate paired outputs")
 
     args = parser.parse_args()
 
@@ -1150,6 +1154,19 @@ Examples:
                 shape_image_path=ct_nifti,
             )
             all_results.extend(feats)
+
+            if args.adapt_diaphragm and modality in ('PET', 'PT'):
+                try:
+                    from run_adaptation_pipeline import process_case
+                    adaptation_root = qc.directory / 'pet_adaptation' / anon_id
+                    process_case(nifti, ct_nifti, seg_dir, adaptation_root, anon_id,
+                                 extraction_config=CONFIG)
+                    qc.stage(anon_id, 'pet_mask_adaptation', 'completed',
+                             'Experimental; anatomical accuracy not established', modality,
+                             artifact=adaptation_root / 'paired_radiomics.csv')
+                except Exception as exc:
+                    qc.stage(anon_id, 'pet_mask_adaptation', 'failed', type(exc).__name__, modality)
+                    log_progress(f'PET mask adaptation failed: {exc}', 'ERROR')
 
     # Save results
     for row in all_results:
